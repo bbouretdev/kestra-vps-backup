@@ -1,0 +1,13 @@
+id: DeployAndStartLatestServerVersion
+namespace: showdown
+description: Save and Execute the flow
+
+tasks:
+  - id: "cloneAndStart"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ['git clone https://github.com/bbouretdev/pokemon-showdown.git','/home/showdown/server_management/start-showdown.sh']
