@@ -3,6 +3,18 @@ namespace: showdown
 description: Save and Execute the flow
 
 tasks:
+  # - id: "cloneAndStartServer"
+  #   type: "io.kestra.plugin.fs.ssh.Command"
+  #   host: 51.68.229.67
+  #   port: "22"
+  #   authMethod: PASSWORD
+  #   username: showdown
+  #   password: "{{ secret('VPS_PASSWORD') }}"
+  #   commands: ["/home/showdown/server_management/stop-showdown.sh" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S rm -rf /home/showdown/pokemon-showdown/" , "git clone https://github.com/bbouretdev/pokemon-showdown.git" , "/home/showdown/server_management/start-showdown.sh"]
+
+  # client.showdowndav.dynv6.net
+  # server.showdowndav.dynv6.net
+
   - id: "cloneAndStartServer"
     type: "io.kestra.plugin.fs.ssh.Command"
     host: 51.68.229.67
@@ -10,13 +22,13 @@ tasks:
     authMethod: PASSWORD
     username: showdown
     password: "{{ secret('VPS_PASSWORD') }}"
-    commands: ["/home/showdown/server_management/stop-showdown.sh" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S rm -rf /home/showdown/pokemon-showdown/" , "git clone https://github.com/bbouretdev/pokemon-showdown.git" , "/home/showdown/server_management/start-showdown.sh"]
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S rm -rf /var/www/pokemon-showdown/" , "cd /var/www/" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S git clone https://github.com/bbouretdev/pokemon-showdown.git" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S chown -R showdown /var/www/pokemon-showdown"]
 
-  # - id: "cloneAndPrepareClient"
-  #   type: "io.kestra.plugin.fs.ssh.Command"
-  #   host: 51.68.229.67
-  #   port: "22"
-  #   authMethod: PASSWORD
-  #   username: showdown
-  #   password: "{{ secret('VPS_PASSWORD') }}"
-  #   commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S rm -rf /home/showdown/pokemon-showdown-client/" , "git clone https://github.com/bbouretdev/pokemon-showdown-client.git"]
+  - id: "cloneAndPrepareClient"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S rm -rf /var/www/pokemon-showdown-client/" , "cd /var/www/" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S git clone https://github.com/bbouretdev/pokemon-showdown-client.git" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S chown -R showdown /var/www/pokemon-showdown-client"]
