@@ -28,7 +28,7 @@ tasks:
     authMethod: PASSWORD
     username: showdown
     password: "{{ secret('VPS_PASSWORD') }}"
-    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S rm -rf /var/www/pokemon-showdown-client/" , "cd /var/www/" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S git clone https://github.com/bbouretdev/pokemon-showdown-client.git" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S chown -R showdown /var/www/pokemon-showdown-client" , "cd /var/www/pokemon-showdown-client/" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S npm install image-size" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S -u showdown node build full"]
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S rm -rf /var/www/pokemon-showdown-client/" , "cd /var/www/" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S git clone https://github.com/bbouretdev/pokemon-showdown-client.git" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S cp -R /home/showdown/showdown_files/* /var/www/pokemon-showdown-client/play.pokemonshowdown.com/", "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S chown -R showdown /var/www/pokemon-showdown-client" , "cd /var/www/pokemon-showdown-client/" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S npm install image-size" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S -u showdown node build full"]
 
   - id: "startServer"
     type: "io.kestra.plugin.fs.ssh.Command"
