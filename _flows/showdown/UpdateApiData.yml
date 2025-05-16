@@ -1,0 +1,22 @@
+id: UpdateApiData
+namespace: showdown
+description: Updates data files behind API
+
+tasks:
+  - id: "generateApiData"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S node /home/showdown/data-transform/generate-api-data.cjs"]
+
+  - id: "reloadApiService"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S systemctl restart fastapi.service"]
