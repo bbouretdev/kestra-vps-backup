@@ -1,0 +1,59 @@
+id: DeployAndStartLatestServerVersion
+namespace: showdown
+description: Save and Execute the flow
+
+tasks:
+  - id: "stopServer"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S systemctl stop showdown"]
+
+  - id: "pullAndBuildServer"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ["cd /var/www/pokemon-showdown/" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S git pull" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S chown -R showdown /var/www/pokemon-showdown" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S -u showdown node build"]
+
+  - id: "pullAndBuildClient"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ["cd /var/www/pokemon-showdown-client/" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S git pull" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S chown -R showdown /var/www/pokemon-showdown-client" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S npm install image-size" , "echo '{{ secret('VPS_PASSWORD') }}' | sudo -S -u showdown node build full"]
+
+  - id: "startServer"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S systemctl start showdown"]
+
+  - id: "generateApiData"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S node /home/showdown/api/data-transform/generate-api-data.cjs"]
+
+  - id: "reloadApiService"
+    type: "io.kestra.plugin.fs.ssh.Command"
+    host: 51.68.229.67
+    port: "22"
+    authMethod: PASSWORD
+    username: showdown
+    password: "{{ secret('VPS_PASSWORD') }}"
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S systemctl restart fastapi.service"]
+    
