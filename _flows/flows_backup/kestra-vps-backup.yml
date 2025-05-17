@@ -1,0 +1,129 @@
+id: kestra-vps-backup
+namespace: flows-backup
+labels:
+  scope: ci_cd
+inputs:
+  - id: target_github
+    type: STRING
+    defaults: https://github.com/bbouretdev/kestra-vps-backup
+
+tasks:
+  - id: sandbox_datalake_commit_and_push_flows
+    type: io.kestra.plugin.git.PushFlows
+    sourceNamespace: sandbox-datalake
+    targetNamespace: sandbox-datalake
+    flows: "*"
+    includeChildNamespaces: true
+    gitDirectory: _flows/sandbox-datalake
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main
+    commitMessage: "add flows {{ now() }}"
+
+  - id: sandbox_datalake_commit_and_push_namespace_files
+    type: io.kestra.plugin.git.PushNamespaceFiles
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main 
+    namespace: sandbox-datalake
+    gitDirectory: _files/sandbox-datalake
+    commitMessage: "add namespace files {{ now() }}" 
+
+  - id: pokemon_commit_and_push_flows
+    type: io.kestra.plugin.git.PushFlows
+    sourceNamespace: pokemon
+    targetNamespace: pokemon
+    flows: "*"
+    includeChildNamespaces: true
+    gitDirectory: _flows/pokemon
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main
+    commitMessage: "add flows {{ now() }}"
+
+  - id: pokemon_commit_and_push_namespace_files_pokemon
+    type: io.kestra.plugin.git.PushNamespaceFiles
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main 
+    namespace: pokemon
+    gitDirectory: _files/pokemon
+    commitMessage: "add namespace files {{ now() }}"
+
+  - id: showdown_commit_and_push_flows
+    type: io.kestra.plugin.git.PushFlows
+    sourceNamespace: showdown
+    targetNamespace: showdown
+    flows: "*"
+    includeChildNamespaces: true
+    gitDirectory: _flows/showdown
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main
+    commitMessage: "add flows {{ now() }}"
+
+  - id: showdown_commit_and_push_namespace_files
+    type: io.kestra.plugin.git.PushNamespaceFiles
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main 
+    namespace: showdown
+    gitDirectory: _files/showdown
+    commitMessage: "add namespace files {{ now() }}" 
+
+  - id: flows_backup_commit_and_push_flows
+    type: io.kestra.plugin.git.PushFlows
+    sourceNamespace: flows-backup
+    targetNamespace: flows-backup
+    flows: "*"
+    includeChildNamespaces: true
+    gitDirectory: _flows/flows_backup
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main
+    commitMessage: "add flows {{ now() }}"
+
+  - id: flows_backup_commit_and_push_namespace_files
+    type: io.kestra.plugin.git.PushNamespaceFiles
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main 
+    namespace: flows-backup
+    gitDirectory: _files/flows_backup
+    commitMessage: "add namespace files {{ now() }}" 
+
+  - id: tgtg_commit_and_push_flows
+    type: io.kestra.plugin.git.PushFlows
+    sourceNamespace: tgtg
+    targetNamespace: tgtg
+    flows: "*"
+    includeChildNamespaces: true
+    gitDirectory: _flows/tgtg
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main
+    commitMessage: "add flows {{ now() }}"
+
+  - id: tgtg_commit_and_push_namespace_files
+    type: io.kestra.plugin.git.PushNamespaceFiles
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main 
+    namespace: tgtg
+    gitDirectory: _files/tgtg
+    commitMessage: "add namespace files {{ now() }}" 
+
+triggers:
+  - id: every_30_minutes
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 6 * * *"
