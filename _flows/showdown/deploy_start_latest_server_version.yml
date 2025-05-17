@@ -1,4 +1,4 @@
-id: DeployAndStartLatestServerVersion
+id: deploy_start_latest_server_version
 namespace: showdown
 description: Save and Execute the flow
 

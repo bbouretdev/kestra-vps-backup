@@ -1,4 +1,4 @@
-id: UpdateApiData
+id: update_api_data
 namespace: showdown
 description: Updates data files behind API
 
