@@ -1,0 +1,73 @@
+id: s3-parquet-to-postgres
+namespace: sandbox-datalake
+
+tasks:
+  # 1. Télécharger les fichiers .parquet depuis S3
+  - id: download_parquet_files
+    type: io.kestra.plugin.aws.s3.Downloads
+    bucket: "sandbox-datalake-gold"
+    endpointOverride: "https://s3.fr-par.scw.cloud"
+    prefix: davlab/notion/2025-05-17/tickets_sprints.parquet
+    accessKeyId: "SCWB3XMCCXHTNQC5KQQH"
+    secretKeyId: "{{ secret('SCALEWAY_SECRET_KEY_ID') }}"
+    region: "fr-par"
+    action: NONE
+
+  # 2. Boucle sur chaque fichier parquet
+  - id: process_each_parquet
+    type: io.kestra.plugin.core.flow.EachSequential
+    value: "{{ outputs.download_parquet_files.objects }}"
+    tasks:
+      - id: duckdb_to_postgres
+        type: io.kestra.plugin.scripts.python.Script
+        runner: PROCESS
+        docker:
+          image: python:3.11
+        env:
+          PG_HOST: "4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud"
+          PG_PORT: "5432"
+          PG_DB: "serverless-sqldb-datasonar"
+          PG_USER: "be52a34e-7113-44fd-805a-829d8faaaa5b"
+          PG_PASSWORD: "{{ secret('POSTGRES_PASSWORD') }}"
+        script: |
+          import duckdb
+          import psycopg2
+          import os
+          import pandas as pd
+          parquet_file = "{{ tasks.value.path }}"
+          table_name = os.path.splitext(os.path.basename(parquet_file))[0].replace("-", "_")
+          con = duckdb.connect()
+          df = con.execute(f"SELECT * FROM '{parquet_file}'").fetchdf()
+          pg_types = {
+              "int64": "BIGINT",
+              "int32": "INTEGER",
+              "float64": "DOUBLE PRECISION",
+              "object": "TEXT",
+              "bool": "BOOLEAN",
+              "datetime64[ns]": "TIMESTAMP"
+          }
+          schema = df.dtypes
+          columns = [
+              f'"{col}" {pg_types.get(str(dtype), "TEXT")}'
+              for col, dtype in schema.items()
+          ]
+          ddl = f'CREATE TABLE IF NOT EXISTS "{table_name}" ({", ".join(columns)});'
+          conn = psycopg2.connect(
+              host=os.getenv("PG_HOST"),
+              port=os.getenv("PG_PORT"),
+              dbname=os.getenv("PG_DB"),
+              user=os.getenv("PG_USER"),
+              password=os.getenv("PG_PASSWORD"),
+          )
+          cursor = conn.cursor()
+          cursor.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+          cursor.execute(ddl)
+          conn.commit()
+          # Insertion
+          rows = [tuple(row) for row in df.to_records(index=False)]
+          placeholders = ", ".join(["%s"] * len(df.columns))
+          insert_sql = f'INSERT INTO "{table_name}" VALUES ({placeholders})'
+          cursor.executemany(insert_sql, rows)
+          conn.commit()
+          cursor.close()
+          conn.close()

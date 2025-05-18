@@ -27,9 +27,11 @@ tasks:
                 settings:
                   s3_region: "fr-par"
                   s3_access_key_id: "SCWB3XMCCXHTNQC5KQQH"
-                  s3_secret_access_key: "764e1512-586c-4cbd-ad83-8251a0d27b7c"
+                  s3_secret_access_key: "{{ secret('SCALEWAY_SECRET_KEY_ID') }}"
                   s3_endpoint: "s3.fr-par.scw.cloud"
             target: dev
         commands:
           - dbt deps
-          - dbt run --select diff_dav_smogon_move
+          - >
+            dbt run --select tickets sprints points tickets_sprints
+            --vars '{"notion_date": "2025-05-17"}'
