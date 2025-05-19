@@ -4,7 +4,7 @@ namespace: sandbox-datalake
 inputs:
   - id: s3_prefix
     type: STRING
-    defaults: pokemon
+    defaults: davlab/notion/2025-05-18/tickets_sprints.parquet
 
 tasks:
   - id: download_from_s3

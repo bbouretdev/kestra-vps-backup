@@ -17,51 +17,45 @@ tasks:
       - pip install pandas pyarrow
     script: |
       import pandas as pd
-      import os
       input_path = "{{ inputs.parquet_uri }}"
       key = "{{ inputs.parquet_key }}"
-      filename = key.split('/')[-1].replace('.parquet', '') + '.csv'
       df = pd.read_parquet(input_path)
       df.to_csv('data.csv', index=False)
     outputFiles:
-      - "*.csv"
+      - "data.csv"
 
   - id: generate_postgres_ddl
     type: io.kestra.plugin.scripts.python.Script
     beforeCommands:
-      - pip install pandas pyarrow
+      - pip install pyarrow
     script: |
       import pyarrow.parquet as pq
 
-      # Lire le fichier Parquet
       table = pq.read_table("{{ inputs.parquet_uri }}")
       schema = table.schema
 
-      # Mapping PyArrow -> PostgreSQL
+      # On force tous les types numériques en DOUBLE PRECISION
       type_mapping = {
-          'int64': 'BIGINT',
-          'int32': 'INTEGER',
+          'int64': 'DOUBLE PRECISION',
+          'int32': 'DOUBLE PRECISION',
           'double': 'DOUBLE PRECISION',
-          'float': 'REAL',
+          'float': 'DOUBLE PRECISION',
           'string': 'TEXT',
           'bool': 'BOOLEAN',
           'binary': 'BYTEA',
           'timestamp[ns]': 'TIMESTAMP'
       }
 
-      # Construire les colonnes SQL
       columns = []
       for field in schema:
-          pg_type = type_mapping.get(str(field.type), 'TEXT')  # fallback TEXT
+          pg_type = type_mapping.get(str(field.type), 'TEXT')
           columns.append(f'"{field.name}" {pg_type}')
 
-      # Générer la requête CREATE TABLE
       key = "{{ inputs.parquet_key }}"
       table_name = key.split('/')[-1].replace('.parquet', '')
       schema_name = "{{ inputs.postgre_schema }}"
-      # Générer la requête SQL avec DROP TABLE IF EXISTS avant le CREATE TABLE
-      ddl = f'DROP TABLE IF EXISTS "{schema_name}.{table_name}";\n'  # Drop si existe
-      ddl += f'CREATE TABLE IF NOT EXISTS "{schema_name}.{table_name}" (\n  ' + ",\n  ".join(columns) + "\n);"
+      ddl = f'DROP TABLE IF EXISTS "{schema_name}"."{table_name}";\n'
+      ddl += f'CREATE TABLE IF NOT EXISTS "{schema_name}"."{table_name}" (\n  ' + ",\n  ".join(columns) + "\n);"
 
       with open("create_table.sql", "w") as f:
           f.write(ddl)
@@ -75,26 +69,41 @@ tasks:
     password: "{{ secret('POSTGRES_PASSWORD') }}"
     sql: "{{ read(outputs.generate_postgres_ddl.outputFiles['create_table.sql']) }}"
 
-  - id: upload_to_postgres
+  - id: upload_to_postgres_copy
     type: io.kestra.plugin.scripts.python.Script
+    runner: PROCESS
     beforeCommands:
-      - pip install pandas sqlalchemy psycopg2-binary
+      - pip install psycopg2-binary
     inputFiles:
       data.csv: "{{ outputs.convert_parquet_to_csv.outputFiles['data.csv'] }}"
     script: |
-      import pandas as pd
-      from sqlalchemy import create_engine
+      import psycopg2
+      from io import StringIO
 
-      # Lire le fichier CSV (placé par inputFiles)
-      df = pd.read_csv('data.csv')
-
-      # Connexion PostgreSQL
-      engine = create_engine(
-        'postgresql+psycopg2://be52a34e-7113-44fd-805a-829d8faaaa5b:{{ secret('POSTGRES_PASSWORD') }}@4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar'
+      conn = psycopg2.connect(
+        host='4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud',
+        port=5432,
+        dbname='serverless-sqldb-datasonar',
+        user='be52a34e-7113-44fd-805a-829d8faaaa5b',
+        password='{{ secret("POSTGRES_PASSWORD") }}'
       )
+      cur = conn.cursor()
 
+      schema = "{{ inputs.postgre_schema }}"
       key = "{{ inputs.parquet_key }}"
       table_name = key.split('/')[-1].replace('.parquet', '')
-      schema = "{{ inputs.postgre_schema }}"
 
-      df.to_sql(table_name, engine, schema=schema, if_exists='append', index=False)
+      with open('data.csv', 'r', encoding='utf-8') as f:
+        csv_buffer = StringIO(f.read())
+
+      try:
+          cur.copy_expert(f'COPY "{schema}"."{table_name}" FROM STDIN WITH CSV HEADER', csv_buffer)
+          conn.commit()
+          print(f"Insertion COPY réussie dans {schema}.{table_name}")
+      except Exception as e:
+          conn.rollback()
+          print(f"Erreur lors de l'insertion COPY: {e}")
+          raise
+      finally:
+          cur.close()
+          conn.close()
