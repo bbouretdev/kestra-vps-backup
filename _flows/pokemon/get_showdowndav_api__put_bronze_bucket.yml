@@ -26,13 +26,23 @@ tasks:
     sslOptions:
       insecureTrustAllCertificates: true
 
+  - id: evaluate_s3_key
+    type: io.kestra.plugin.core.debug.Return
+    format: >
+      {% if inputs.source == "dav" %}
+      {{ inputs.s3_path }}/dav/{{ inputs.release_version }}/{{ inputs.datalake_object }}.json
+      {% endif %}
+      {% if inputs.source == "smogon" %}
+      {{ inputs.s3_path }}/smogon/{{ inputs.datalake_object }}.json
+      {% endif %}
+
   - id: upload_on_bronze_s3_bucket
     type: io.kestra.plugin.aws.s3.Upload
     from: "{{ outputs.download_from_web_api.uri }}"
     accessKeyId: "SCWB3XMCCXHTNQC5KQQH"
     secretKeyId: "{{ secret('SCALEWAY_SECRET_KEY_ID') }}"
     bucket: "sandbox-datalake-bronze"
-    key: "{{ inputs.s3_path }}/{{ inputs.source }}/{{ inputs.release_version }}/{{ inputs.datalake_object }}.json"
+    key: "{{ outputs.evaluate_s3_key.value | trim }}"
     endpointOverride: "https://s3.fr-par.scw.cloud"
     region: "fr-par"
           

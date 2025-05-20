@@ -10,18 +10,18 @@ inputs:
   - id: s3_path
     type: STRING
     required: true
-    defaults: pokemon/showdown
+    defaults: "pokemon/showdown"
 
   - id: release_version
     type: STRING
-    description: "Should increment the latest available-on-datalake data version, depending on the chosen source."
+    description: "Should increment the latest available-on-datalake data version, depending on the chosen source. Will not be evaluated if 'smogon' is chosen as source."
     required: true
     
   - id: source
     type: ENUM
     description: "Whether to ingest 'davidson' fork project or 'smogon' official Pokemon Showdown data."
     required: true
-    defaults: dav
+    defaults: "dav"
     values:
       - dav
       - smogon
