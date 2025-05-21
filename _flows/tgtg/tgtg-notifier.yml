@@ -57,7 +57,7 @@ tasks:
       with open(file_path, 'w') as f:
           json.dump(active_items, f)
 
-triggers:
-  - id: schedule
-    type: io.kestra.plugin.core.trigger.Schedule
-    cron: "* * * * *"
+# triggers:
+#   - id: schedule
+#     type: io.kestra.plugin.core.trigger.Schedule
+#     cron: "* * * * *"
