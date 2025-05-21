@@ -1,0 +1,67 @@
+id: generate-smogon-changelog
+namespace: showdown
+description: Génère un changelog texte des différences Pokémon depuis la base Smogon.
+
+tasks:
+  - id: fetch_diff_rows
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT * FROM pokemon_showdown_latest.diff_dav_smogon_pokemon
+    store: true
+
+  - id: ion_to_csv
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_diff_rows.uri }}"
+
+  - id: generate_changelog
+    type: io.kestra.plugin.scripts.python.Script
+    runner: PROCESS
+    beforeCommands:
+      - pip install pandas
+    inputFiles:
+      data.csv: "{{ outputs.ion_to_csv.uri }}"
+    outputFiles:
+      - changelog.txt
+    script: |
+      import pandas as pd
+
+      # Chargement CSV, première colonne = Pokémon (index)
+      df = pd.read_csv('data.csv', index_col=0)
+      print("Colonnes trouvées :", df.columns.tolist())
+
+      def is_diff(old, new):
+          if pd.isna(old) and pd.isna(new):
+              return False
+          return old != new
+
+      def generate_entry(pokemon, row):
+          changes = []
+          for col in df.columns:
+              if col.endswith("_old"):
+                  base = col[:-4]
+                  old_val = row[col]
+                  new_col = base + "_new"
+                  new_val = row[new_col] if new_col in df.columns else None
+                  if is_diff(old_val, new_val):
+                      if pd.isna(old_val) and not pd.isna(new_val):
+                          changes.append(f"- {base} ajouté : {new_val}")
+                      elif not pd.isna(old_val) and pd.isna(new_val):
+                          changes.append(f"- {base} supprimé : anciennement {old_val}")
+                      else:
+                          changes.append(f"- {base} modifié : {old_val} → {new_val}")
+          if changes:
+              return f"{pokemon}\n" + "\n".join(changes) + "\n"
+          return None
+
+      entries = []
+      for pokemon, row in df.iterrows():
+          entry = generate_entry(pokemon, row)
+          if entry:
+              entries.append(entry)
+
+      with open("changelog.txt", "w") as f:
+          f.write("Changelog des différences Pokémon\n\n")
+          f.write("\n".join(entries))
