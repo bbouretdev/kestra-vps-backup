@@ -9,7 +9,15 @@ tasks:
     username: be52a34e-7113-44fd-805a-829d8faaaa5b
     password: "{{ secret('POSTGRES_PASSWORD') }}"
     sql: |
-      SELECT * FROM pokemon_showdown_latest.diff_dav_smogon_pokemon
+      SELECT
+        dd.*,
+        pp.num,
+        ls.added_moves,
+        ls.removed_moves
+      FROM pokemon_showdown_latest.diff_dav_smogon_pokemon dd
+      JOIN pokemon_showdown_latest.playable_pokemon pp ON dd."key" = pp."key"
+      LEFT JOIN pokemon_showdown_latest.diff_dav_smogon_learnset ls ON dd."key" = ls.pokemon_id
+      ORDER BY pp.num;
     store: true
 
   - id: ion_to_csv
@@ -27,8 +35,21 @@ tasks:
       - changelog.md
     script: |
       import pandas as pd
+      import json
+      import re
 
       df = pd.read_csv('data.csv', index_col=0)
+
+      def to_link(text, type_):
+          # Normaliser : minuscules, retirer espaces et caractères spéciaux
+          clean = re.sub(r'[^a-z0-9]', '', text.lower())
+          base_url = "https://dex.showdowndav.dynv6.net"
+          if type_ == "ability":
+              return f"[`{text}`]({base_url}/abilities/{clean})"
+          elif type_ == "move":
+              return f"[`{text}`]({base_url}/moves/{clean})"
+          else:
+              return f"`{text}`"
 
       def is_diff(old, new):
           if pd.isna(old) and pd.isna(new):
@@ -42,14 +63,50 @@ tasks:
                   base = col[:-4]
                   old_val = row[col]
                   new_col = base + "_new"
-                  new_val = row[new_col] if new_col in df.columns else None
+                  new_val = row.get(new_col)
+
+                  # Si c'est une capacité (ability), link
+                  if base.startswith("ability") and pd.notna(new_val):
+                      new_val_fmt = to_link(new_val, "ability")
+                  else:
+                      new_val_fmt = f"`{new_val}`" if pd.notna(new_val) else None
+
+                  # Même chose pour l'ancien
+                  if base.startswith("ability") and pd.notna(old_val):
+                      old_val_fmt = to_link(old_val, "ability")
+                  else:
+                      old_val_fmt = f"`{old_val}`" if pd.notna(old_val) else None
+
                   if is_diff(old_val, new_val):
                       if pd.isna(old_val) and not pd.isna(new_val):
-                          changes.append(f"- **{base}** added : `{new_val}`")
+                          changes.append(f"- **{base}** added : {new_val_fmt}")
                       elif not pd.isna(old_val) and pd.isna(new_val):
-                          changes.append(f"- **{base}** removed : previously `{old_val}`")
+                          changes.append(f"- **{base}** removed : previously {old_val_fmt}")
                       else:
-                          changes.append(f"- **{base}** changed : `{old_val}` → `{new_val}`")
+                          changes.append(f"- **{base}** changed : {old_val_fmt} → {new_val_fmt}")
+
+          # Moves parsing with links and backticks
+          added = row.get('added_moves')
+          removed = row.get('removed_moves')
+
+          if pd.notna(added):
+              try:
+                  added_list = json.loads(added)
+                  if isinstance(added_list, list) and added_list:
+                      formatted = '\n  '.join(f"-> {to_link(m, 'move')}" for m in added_list)
+                      changes.append("- **added_moves** :\n  " + formatted)
+              except Exception:
+                  pass
+
+          if pd.notna(removed):
+              try:
+                  removed_list = json.loads(removed)
+                  if isinstance(removed_list, list) and removed_list:
+                      formatted = '\n  '.join(f"-> {to_link(m, 'move')}" for m in removed_list)
+                      changes.append("- **removed_moves** :\n  " + formatted)
+              except Exception:
+                  pass
+
           if changes:
               return f"### {pokemon}\n" + "\n".join(changes) + "\n"
           return None
