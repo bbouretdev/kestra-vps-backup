@@ -2,10 +2,24 @@ id: update_battlelogs_api
 namespace: showdown
 description: Extracts battlelogs and updates showdown API
 
+triggers:
+  - id: run_data_chain_notion_api_daily
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 1 * * *"
+    timezone: Europe/Paris
+
+inputs:
+  - id: logs_date
+    type: DATE
+    required: false
+
+variables:
+  input_or_yesterday: "{{ inputs.logs_date ?? ( now() | dateAdd(-1, 'DAYS') | date('yyyy-MM-dd') ) }}"
+
 tasks:
-  - id: set_current_date
-    type: io.kestra.plugin.core.debug.Return
-    format: "{{ now() | date('yyyy-MM-dd') }}"
+  # - id: set_yesterday_date
+  #   type: io.kestra.plugin.core.debug.Return
+  #   format: "{{ now() | dateAdd(-1, 'DAYS') | date('yyyy-MM-dd') }}"
 
   - id: "extract_battlelogs_by_date"
     type: "io.kestra.plugin.fs.ssh.Command"
@@ -14,7 +28,7 @@ tasks:
     authMethod: PASSWORD
     username: showdown
     password: "{{ secret('VPS_PASSWORD') }}"
-    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S python3 /home/showdown/pokemon-showdown-api/data-transform/extract_battlelogs_by_date.py {{ outputs.set_current_date.value }}"]
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S python3 /home/showdown/pokemon-showdown-api/data-transform/extract_battlelogs_by_date.py {{ render(vars.input_or_yesterday) }}"]
 
   - id: "reloadApiService"
     type: "io.kestra.plugin.fs.ssh.Command"

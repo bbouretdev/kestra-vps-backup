@@ -10,7 +10,7 @@ tasks:
     authMethod: PASSWORD
     username: showdown
     password: "{{ secret('VPS_PASSWORD') }}"
-    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S node /home/showdown/api/data-transform/generate-api-data.cjs"]
+    commands: ["echo '{{ secret('VPS_PASSWORD') }}' | sudo -S node /home/showdown/pokemon-showdown-api/data-transform/generate-api-data.cjs"]
 
   - id: "reloadApiService"
     type: "io.kestra.plugin.fs.ssh.Command"
