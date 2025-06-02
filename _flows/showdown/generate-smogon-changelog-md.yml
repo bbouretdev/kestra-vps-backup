@@ -113,7 +113,7 @@ tasks:
                   old_val = row[col]
                   new_val = row.get(f"{base}_new")
 
-                  if base.startswith("ability") and pd.notna(new_val):
+                  if ("ability" in base) and pd.notna(new_val):
                       new_val_fmt = to_link(new_val, "ability")
                   elif base.startswith("type") and pd.notna(new_val):
                       new_val_fmt = to_link(new_val, "type")
