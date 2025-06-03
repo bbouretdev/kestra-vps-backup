@@ -1,0 +1,163 @@
+id: generate-changelogs-pokemon-full
+namespace: showdown.changelogs
+description: Génère un changelog Markdown des différences Pokémon avec tooltips.
+
+tasks:
+  - id: fetch_diff_rows
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT
+        dd.*, pp.num, ls.added_moves, ls.removed_moves
+      FROM pokemon_showdown_latest.diff_with_smogon_release_pokemon dd
+      JOIN pokemon_showdown_latest.playable_pokemon pp ON dd."key" = pp."key"
+      LEFT JOIN pokemon_showdown_latest.diff_with_smogon_release_learnset ls ON dd."key" = ls.pokemon_id
+      ORDER BY pp.num;
+    store: true
+
+  - id: ion_to_csv
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_diff_rows.uri }}"
+
+  - id: fetch_moves
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT key, name, short_description FROM pokemon_showdown_latest.full_move;
+    store: true
+
+  - id: to_csv_moves
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_moves.uri }}"
+
+  - id: fetch_abilities
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT key, name, short_description FROM pokemon_showdown_latest.full_ability;
+    store: true
+
+  - id: to_csv_abilities
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_abilities.uri }}"
+
+  - id: generate_changelog_md
+    type: io.kestra.plugin.scripts.python.Script
+    runner: PROCESS
+    beforeCommands:
+      - pip install pandas
+    inputFiles:
+      data.csv: "{{ outputs.ion_to_csv.uri }}"
+      moves.csv: "{{ outputs.to_csv_moves.uri }}"
+      abilities.csv: "{{ outputs.to_csv_abilities.uri }}"
+    outputFiles:
+      - changelog.md
+    script: |
+      import pandas as pd
+      import json
+      import re
+
+      df = pd.read_csv('data.csv', index_col=0)
+      moves_df = pd.read_csv('moves.csv')
+      abilities_df = pd.read_csv('abilities.csv')
+
+      move_map = {
+          row['key'].lower(): (row['name'], row['short_description'] or "")
+          for _, row in moves_df.iterrows()
+      }
+
+      ability_map = {
+          row['key'].lower(): (row['name'], row['short_description'] or "")
+          for _, row in abilities_df.iterrows()
+      }
+
+      def html_link(text, url, tooltip=""):
+          tooltip_attr = f' title="{tooltip}"' if tooltip else ""
+          return f'<a href="{url}"{tooltip_attr}>{text}</a>'
+
+      def to_link(text, type_):
+          if pd.isna(text):
+              return ""
+          key = re.sub(r'[^a-z0-9]', '', text.lower())
+          base_url = "https://dex.showdowndav.dynv6.net"
+
+          if type_ == "move":
+              name, tooltip = move_map.get(key, (text, ""))
+              return html_link(name, f"{base_url}/moves/{key}", tooltip)
+          elif type_ == "ability":
+              name, tooltip = ability_map.get(key, (text, ""))
+              return html_link(name, f"{base_url}/abilities/{key}", tooltip)
+          elif type_ == "type":
+              return html_link(text, f"{base_url}/types/{key}")
+          elif type_ == "pokemon":
+              return f"### {html_link(text, f'{base_url}/pokemon/{key}')}"
+          return f"`{text}`"
+
+      def is_diff(old, new):
+          if pd.isna(old) and pd.isna(new):
+              return False
+          return str(old) != str(new)
+
+      def generate_entry(pokemon, row):
+          changes = []
+
+          for col in df.columns:
+              if col.endswith("_old"):
+                  base = col[:-4]
+                  old_val = row[col]
+                  new_val = row.get(f"{base}_new")
+
+                  if ("ability" in base) and pd.notna(new_val):
+                      new_val_fmt = to_link(new_val, "ability")
+                  elif base.startswith("type") and pd.notna(new_val):
+                      new_val_fmt = to_link(new_val, "type")
+                  else:
+                      new_val_fmt = f"`{new_val}`" if pd.notna(new_val) else None
+
+                  if base.startswith("ability") and pd.notna(old_val):
+                      old_val_fmt = to_link(old_val, "ability")
+                  elif base.startswith("type") and pd.notna(old_val):
+                      old_val_fmt = to_link(old_val, "type")
+                  else:
+                      old_val_fmt = f"`{old_val}`" if pd.notna(old_val) else None
+
+                  if is_diff(old_val, new_val):
+                      if pd.isna(old_val):
+                          changes.append(f"- **{base}** added : {new_val_fmt}")
+                      elif pd.isna(new_val):
+                          changes.append(f"- **{base}** removed : previously {old_val_fmt}")
+                      else:
+                          changes.append(f"- **{base}** changed : {old_val_fmt} → {new_val_fmt}")
+
+          for move_type, label in [('added_moves', 'added_moves'), ('removed_moves', 'removed_moves')]:
+              move_data = row.get(move_type)
+              if pd.notna(move_data):
+                  try:
+                      moves = json.loads(move_data)
+                      if isinstance(moves, list) and moves:
+                          formatted = '\n  '.join(
+                              f"-> {to_link(m, 'move')}" for m in moves
+                          )
+                          changes.append(f"- **{label}** :\n  {formatted}")
+                  except Exception:
+                      pass
+
+          if changes:
+              return to_link(pokemon, "pokemon") + "\n" + "\n".join(changes) + "\n"
+          return None
+
+      entries = []
+      for pokemon, row in df.iterrows():
+          entry = generate_entry(pokemon, row)
+          if entry:
+              entries.append(entry)
+
+      with open("changelog.md", "w") as f:
+          f.write("# [POKEMON]: Changelog full\n\n")
+          f.write("\n".join(entries))

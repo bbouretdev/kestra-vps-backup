@@ -1,8 +1,25 @@
-id: generate-smogon-changelog-md
-namespace: showdown
+id: generate-changelogs-pokemon-differential
+namespace: showdown.changelogs
 description: Génère un changelog Markdown des différences Pokémon avec tooltips.
 
+inputs:
+  - id: version
+    type: STRING
+
+  - id: is_latest
+    type: ENUM
+    required: true
+    defaults: "yes"
+    values:
+      - yes
+      - no
+
+
 tasks:
+  - id: get_schema_version
+    type: io.kestra.plugin.core.debug.Return
+    format: "{% if inputs.is_latest == 'yes' %}latest{% else %}{{ inputs.version | trim }}{% endif %}"
+
   - id: fetch_diff_rows
     type: io.kestra.plugin.jdbc.postgresql.Query
     url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
@@ -11,9 +28,9 @@ tasks:
     sql: |
       SELECT
         dd.*, pp.num, ls.added_moves, ls.removed_moves
-      FROM pokemon_showdown_latest.diff_dav_smogon_pokemon dd
-      JOIN pokemon_showdown_latest.playable_pokemon pp ON dd."key" = pp."key"
-      LEFT JOIN pokemon_showdown_latest.diff_dav_smogon_learnset ls ON dd."key" = ls.pokemon_id
+      FROM "{{ 'pokemon_showdown_' ~ outputs.get_schema_version.value }}".diff_with_previous_release_pokemon dd
+      JOIN "{{ 'pokemon_showdown_' ~ outputs.get_schema_version.value }}".playable_pokemon pp ON dd."key" = pp."key"
+      LEFT JOIN "{{ 'pokemon_showdown_' ~ outputs.get_schema_version.value }}".diff_with_previous_release_learnset ls ON dd."key" = ls.pokemon_id
       ORDER BY pp.num;
     store: true
 
@@ -27,7 +44,7 @@ tasks:
     username: be52a34e-7113-44fd-805a-829d8faaaa5b
     password: "{{ secret('POSTGRES_PASSWORD') }}"
     sql: |
-      SELECT key, name, short_description FROM pokemon_showdown_latest.full_move;
+      SELECT key, name, short_description FROM "{{ 'pokemon_showdown_' ~ outputs.get_schema_version.value }}".full_move;
     store: true
 
   - id: to_csv_moves
@@ -40,7 +57,7 @@ tasks:
     username: be52a34e-7113-44fd-805a-829d8faaaa5b
     password: "{{ secret('POSTGRES_PASSWORD') }}"
     sql: |
-      SELECT key, name, short_description FROM pokemon_showdown_latest.full_ability;
+      SELECT key, name, short_description FROM "{{ 'pokemon_showdown_' ~ outputs.get_schema_version.value }}".full_ability;
     store: true
 
   - id: to_csv_abilities
@@ -159,5 +176,5 @@ tasks:
               entries.append(entry)
 
       with open("changelog.md", "w") as f:
-          f.write("# [POKEMON]: Changelog full\n\n")
+          f.write("# [POKEMON]: V{{ inputs.version }}\n\n")
           f.write("\n".join(entries))
