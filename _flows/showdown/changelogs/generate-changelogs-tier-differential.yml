@@ -1,0 +1,79 @@
+id: generate-changelogs-tier-differential
+namespace: showdown.changelogs
+description: Génère un changelog Markdown des différences tiers avec tooltips.
+
+inputs:
+  - id: version
+    type: STRING
+
+  - id: is_latest
+    type: ENUM
+    required: true
+    defaults: "yes"
+    values:
+      - yes
+      - no
+
+tasks:
+  - id: get_schema_version
+    type: io.kestra.plugin.core.debug.Return
+    format: "{% if inputs.is_latest == 'yes' %}latest{% else %}{{ inputs.version | trim }}{% endif %}"
+
+  - id: fetch_diff_tiers
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT * FROM "{{ 'pokemon_showdown_' ~ outputs.get_schema_version.value }}".diff_with_smogon_release_tier
+      ORDER BY key;
+    store: true
+
+  - id: to_csv_diff_tiers
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_diff_tiers.uri }}"
+
+  - id: generate_tier_changelog_md
+    type: io.kestra.plugin.scripts.python.Script
+    runner: PROCESS
+    beforeCommands:
+      - pip install pandas
+    inputFiles:
+      data.csv: "{{ outputs.to_csv_diff_tiers.uri }}"
+    outputFiles:
+      - changelog.md
+    script: |
+      import pandas as pd
+      import re
+
+      df = pd.read_csv("data.csv")
+
+      def html_link(text, url, tooltip=""):
+          tooltip_attr = f' title="{tooltip}"' if tooltip else ""
+          return f'<a href="{url}"{tooltip_attr}>{text}</a>'
+
+      def to_link_tier(tier):
+          if pd.isna(tier) or tier == "":
+              return "*None*"
+          key_clean = re.sub(r'[^a-z0-9]', '', str(tier).lower())
+          return html_link(tier, f"https://dex.showdowndav.dynv6.net/tiers/{key_clean}")
+
+      def is_diff(old, new):
+          return str(old) != str(new) and not (pd.isna(old) and pd.isna(new))
+
+      entries = []
+
+      for _, row in df.iterrows():
+          key = row["key"]
+          old_tier = row["tier_old"]
+          new_tier = row["tier_new"]
+
+          if is_diff(old_tier, new_tier):
+              old_fmt = to_link_tier(old_tier) if pd.notna(old_tier) else "*None*"
+              new_fmt = to_link_tier(new_tier) if pd.notna(new_tier) else "*None*"
+              entry = f"### {key}\n- **tier** modifié : {old_fmt} → {new_fmt}\n"
+              entries.append(entry)
+
+      with open("changelog.md", "w") as f:
+          f.write(f"# [TIERS]: V{{ inputs.version }}\n\n")
+          f.write("\n".join(entries))

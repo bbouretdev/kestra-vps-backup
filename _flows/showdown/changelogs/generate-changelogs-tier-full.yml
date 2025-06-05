@@ -1,0 +1,71 @@
+id: generate-changelogs-tier-full
+namespace: showdown.changelogs
+description: Génère un changelog Markdown des différences de tiers (Smogon tiers).
+
+tasks:
+  - id: fetch_diff_tiers
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT * FROM pokemon_showdown_latest.diff_with_smogon_release_tier
+      ORDER BY key;
+    store: true
+
+  - id: to_csv_diff_tiers
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_diff_tiers.uri }}"
+
+  - id: generate_tier_changelog_md
+    type: io.kestra.plugin.scripts.python.Script
+    runner: PROCESS
+    beforeCommands:
+      - pip install pandas
+    inputFiles:
+      tiers.csv: "{{ outputs.to_csv_diff_tiers.uri }}"
+    outputFiles:
+      - changelog_tiers.md
+    script: |
+      import pandas as pd
+      import re
+
+      df = pd.read_csv("tiers.csv")
+      df.columns = [c.strip().lower() for c in df.columns]
+
+      def html_link_pokemon(poke_key):
+          if pd.isna(poke_key):
+              return "*None*"
+          key_clean = re.sub(r'[^a-z0-9]', '', str(poke_key).lower())
+          name = poke_key.capitalize()
+          return f'<a href="https://dex.showdowndav.dynv6.net/pokemon/{key_clean}" title="Voir la fiche de {name}">{name}</a>'
+
+      def is_diff(old, new):
+          return str(old) != str(new) and not (pd.isna(old) and pd.isna(new))
+
+      def format_entry(row):
+          key = row["key"]
+          old = row["tier_old"]
+          new = row["tier_new"]
+
+          if not is_diff(old, new):
+              return None
+
+          old_fmt = f"`{old}`" if pd.notna(old) else "*None*"
+          new_fmt = f"`{new}`" if pd.notna(new) else "*None*"
+          title = html_link_pokemon(key)
+
+          if pd.isna(old):
+              change = f"- **Tier** ajouté : {new_fmt}"
+          elif pd.isna(new):
+              change = f"- **Tier** supprimé (était {old_fmt})"
+          else:
+              change = f"- **Tier** modifié : {old_fmt} → {new_fmt}"
+
+          return f"### {title}\n{change}\n"
+
+      entries = [format_entry(row) for _, row in df.iterrows() if format_entry(row)]
+
+      with open("changelog_tiers.md", "w") as f:
+          f.write("# [TIERS]: Changelog des changements de classement\n\n")
+          f.write("\n".join(entries))

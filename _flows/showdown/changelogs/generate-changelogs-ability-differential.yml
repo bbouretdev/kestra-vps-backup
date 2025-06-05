@@ -1,0 +1,123 @@
+id: generate-changelogs-ability-differential
+namespace: showdown.changelogs
+description: Génère un changelog Markdown des différences d'abilities (versionnées) avec tooltips.
+
+inputs:
+  - id: version
+    type: STRING
+
+  - id: is_latest
+    type: ENUM
+    required: true
+    defaults: "yes"
+    values:
+      - yes
+      - no
+
+tasks:
+  - id: get_schema_version
+    type: io.kestra.plugin.core.debug.Return
+    format: "{% if inputs.is_latest == 'yes' %}latest{% else %}{{ inputs.version | trim }}{% endif %}"
+
+  - id: fetch_diff_abilities
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT * FROM "{{ 'pokemon_showdown_' ~ outputs.get_schema_version.value }}".diff_with_previous_release_ability
+      ORDER BY key;
+    store: true
+
+  - id: to_csv_diff_abilities
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_diff_abilities.uri }}"
+
+  - id: fetch_abilities
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT key, name, short_description
+      FROM "{{ 'pokemon_showdown_' ~ outputs.get_schema_version.value }}".full_ability;
+    store: true
+
+  - id: to_csv_abilities
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_abilities.uri }}"
+
+  - id: generate_ability_changelog_md
+    type: io.kestra.plugin.scripts.python.Script
+    runner: PROCESS
+    beforeCommands:
+      - pip install pandas
+    inputFiles:
+      data.csv: "{{ outputs.to_csv_diff_abilities.uri }}"
+      abilities.csv: "{{ outputs.to_csv_abilities.uri }}"
+    outputFiles:
+      - changelog.md
+    script: |
+      import pandas as pd
+      import re
+
+      df = pd.read_csv("data.csv")
+      abilities_df = pd.read_csv("abilities.csv")
+
+      ability_map = {
+          row["key"].lower(): (row["name"], row["short_description"] or "")
+          for _, row in abilities_df.iterrows()
+      }
+
+      def html_link(text, url, tooltip=""):
+          tooltip_attr = f' title="{tooltip}"' if tooltip else ""
+          return f'<a href="{url}"{tooltip_attr}>{text}</a>'
+
+      def to_link_ability(key):
+          if pd.isna(key):
+              return "*None*"
+          key_clean = re.sub(r'[^a-z0-9]', '', str(key).lower())
+          name, tooltip = ability_map.get(key_clean, (key, ""))
+          return html_link(name, f"https://dex.showdowndav.dynv6.net/abilities/{key_clean}", tooltip)
+
+      def is_diff(old, new):
+          return str(old) != str(new) and not (pd.isna(old) and pd.isna(new))
+
+      def format_entry(row):
+          key = row["key"]
+          changes = []
+
+          for col in df.columns:
+              if col.endswith("_old"):
+                  base = col[:-4]
+                  old_val = row[col]
+                  new_val = row.get(f"{base}_new")
+
+                  if base in ["short_description", "description"]:
+                      old_fmt = f"\"{old_val}\"" if pd.notna(old_val) else "*None*"
+                      new_fmt = f"\"{new_val}\"" if pd.notna(new_val) else "*None*"
+                  elif base in ["rating", "num", "is_nonstandard"]:
+                      old_fmt = f"`{old_val}`" if pd.notna(old_val) else "*None*"
+                      new_fmt = f"`{new_val}`" if pd.notna(new_val) else "*None*"
+                  else:
+                      old_fmt = str(old_val)
+                      new_fmt = str(new_val)
+
+                  if is_diff(old_val, new_val):
+                      if pd.isna(old_val):
+                          changes.append(f"- **{base}** ajouté : {new_fmt}")
+                      elif pd.isna(new_val):
+                          changes.append(f"- **{base}** supprimé (était {old_fmt})")
+                      else:
+                          changes.append(f"- **{base}** modifié : {old_fmt} → {new_fmt}")
+
+          if changes:
+              title = to_link_ability(key)
+              return f"### {title}\n" + "\n".join(changes) + "\n"
+          return None
+
+      entries = [format_entry(row) for _, row in df.iterrows() if format_entry(row)]
+
+      with open("changelog.md", "w") as f:
+          f.write(f"# [ABILITIES]: V{{ inputs.version }}\n\n")
+          f.write("\n".join(entries))

@@ -1,0 +1,115 @@
+id: generate-changelogs-item-full
+namespace: showdown.changelogs
+description: Génère un changelog Markdown des différences Items avec tooltips.
+
+tasks:
+  - id: fetch_diff_items
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT * FROM pokemon_showdown_latest.diff_with_smogon_release_item
+      ORDER BY key;
+    store: true
+
+  - id: to_csv_diff_items
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_diff_items.uri }}"
+
+  - id: fetch_items
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://4505da19-4cd7-40c8-ab0a-d7f44b75731e.pg.sdb.fr-par.scw.cloud:5432/serverless-sqldb-datasonar
+    username: be52a34e-7113-44fd-805a-829d8faaaa5b
+    password: "{{ secret('POSTGRES_PASSWORD') }}"
+    sql: |
+      SELECT key, name, short_description FROM pokemon_showdown_latest.full_item;
+    store: true
+
+  - id: to_csv_items
+    type: io.kestra.plugin.serdes.csv.IonToCsv
+    from: "{{ outputs.fetch_items.uri }}"
+
+  - id: generate_item_changelog_md
+    type: io.kestra.plugin.scripts.python.Script
+    runner: PROCESS
+    beforeCommands:
+      - pip install pandas
+    inputFiles:
+      data.csv: "{{ outputs.to_csv_diff_items.uri }}"
+      items.csv: "{{ outputs.to_csv_items.uri }}"
+    outputFiles:
+      - changelog_items.md
+    script: |
+      import pandas as pd
+      import re
+
+      df = pd.read_csv("data.csv")
+      df.columns = [c.strip().lower() for c in df.columns]
+
+      items_df = pd.read_csv("items.csv")
+      items_df.columns = [c.strip().lower() for c in items_df.columns]
+
+      item_map = {
+          row["key"].lower(): (row["name"], row["short_description"] or "")
+          for _, row in items_df.iterrows()
+      }
+
+      def html_link(text, url, tooltip=""):
+          tooltip_attr = f' title="{tooltip}"' if tooltip else ""
+          return f'<a href="{url}"{tooltip_attr}>{text}</a>'
+
+      def to_link_item(item_key):
+          if pd.isna(item_key):
+              return "*None*"
+          key_clean = re.sub(r'[^a-z0-9]', '', str(item_key).lower())
+          name, tooltip = item_map.get(key_clean, (item_key, ""))
+          return html_link(name, f"https://dex.showdowndav.dynv6.net/items/{key_clean}", tooltip)
+
+      def is_diff(old, new):
+          return str(old) != str(new) and not (pd.isna(old) and pd.isna(new))
+
+      def format_entry(row):
+          key = row["key"]
+          changes = []
+
+          for col in df.columns:
+              if col.endswith("_old"):
+                  base = col[:-4]
+                  old_val = row[col]
+                  new_val = row.get(f"{base}_new")
+
+                  if base in ["description", "short_description", "on_drive", "z_move", "z_move_type", "z_move_from", "mega_stone", "mega_evolves", "item_user"]:
+                      old_fmt = f"\"{old_val}\"" if pd.notna(old_val) else "*None*"
+                      new_fmt = f"\"{new_val}\"" if pd.notna(new_val) else "*None*"
+                  elif base in ["num", "gen"]:
+                      old_fmt = f"`{old_val}`" if pd.notna(old_val) else "*None*"
+                      new_fmt = f"`{new_val}`" if pd.notna(new_val) else "*None*"
+                  elif base.startswith("is_"):
+                      old_fmt = "✅" if old_val else "❌"
+                      new_fmt = "✅" if new_val else "❌"
+                  elif base == "name":
+                      old_fmt = f"**{old_val}**" if pd.notna(old_val) else "*None*"
+                      new_fmt = f"**{new_val}**" if pd.notna(new_val) else "*None*"
+                  else:
+                      old_fmt = f"`{old_val}`"
+                      new_fmt = f"`{new_val}`"
+
+                  if is_diff(old_val, new_val):
+                      if pd.isna(old_val):
+                          changes.append(f"- **{base}** added: {new_fmt}")
+                      elif pd.isna(new_val):
+                          changes.append(f"- **{base}** removed (was {old_fmt})")
+                      else:
+                          changes.append(f"- **{base}** changed: {old_fmt} → {new_fmt}")
+
+          if changes:
+              title = to_link_item(key)
+              return f"### {title}\n" + "\n".join(changes) + "\n"
+          return None
+
+      entries = [format_entry(row) for _, row in df.iterrows() if format_entry(row)]
+
+      with open("changelog_items.md", "w") as f:
+          f.write("# [ITEMS]: Changelog full\n\n")
+          f.write("\n".join(entries))
