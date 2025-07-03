@@ -3,7 +3,7 @@ namespace: showdown
 description: Extracts battlelogs and updates showdown API
 
 triggers:
-  - id: run_data_chain_notion_api_daily
+  - id: update_battlelogs_api
     type: io.kestra.plugin.core.trigger.Schedule
     cron: "0 1 * * *"
     timezone: Europe/Paris
