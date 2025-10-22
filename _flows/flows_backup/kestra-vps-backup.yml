@@ -123,6 +123,29 @@ tasks:
     gitDirectory: _files/tgtg
     commitMessage: "add namespace files {{ now() }}" 
 
+  - id: enygea_commit_and_push_flows
+    type: io.kestra.plugin.git.PushFlows
+    sourceNamespace: enygea
+    targetNamespace: enygea
+    flows: "*"
+    includeChildNamespaces: true
+    gitDirectory: _flows/enygea
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main
+    commitMessage: "add flows {{ now() }}"
+
+  - id: enygea_commit_and_push_namespace_files
+    type: io.kestra.plugin.git.PushNamespaceFiles
+    url: "{{ inputs.target_github }}"
+    username: kestra-ci
+    password: "{{ secret('BBOURETDEV_GITHUB_ACCESS_TOKEN') }}"
+    branch: main 
+    namespace: enygea
+    gitDirectory: _files/enygea
+    commitMessage: "add namespace files {{ now() }}" 
+
 triggers:
   - id: every_30_minutes
     type: io.kestra.plugin.core.trigger.Schedule
