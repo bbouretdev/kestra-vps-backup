@@ -1,0 +1,10 @@
+id: sqlserver_query_test
+namespace: enygea.dlt
+tasks:
+  - id: select
+    type: io.kestra.plugin.jdbc.sqlserver.Query
+    url: jdbc:sqlserver://localhost:41433;trustServerCertificate=true
+    username: "{{ secret('SQL_USERNAME') }}"
+    password: "{{ secret('SQL_PASSWORD') }}"
+    sql: select * from source
+    fetchType: FETCH

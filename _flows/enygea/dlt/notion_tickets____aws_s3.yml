@@ -1,0 +1,30 @@
+id: notion_tickets____aws_s3
+namespace: enygea.dlt
+
+tasks:
+  - id: dlt_pipeline
+    type: io.kestra.plugin.core.flow.WorkingDirectory
+    tasks:
+    - id: clone_repo
+      type: io.kestra.plugin.git.Clone
+      url: https://github.com/bbouretdev/enygea_poc_dlt.git
+      branch: main
+  
+    - id: run_pipeline
+      type: io.kestra.plugin.scripts.python.Script
+      taskRunner:
+        type: io.kestra.plugin.scripts.runner.docker.Docker
+      containerImage: python:3.11-slim
+      beforeCommands:
+        - pip install --upgrade pip
+        - pip install "dlt[filesystem,s3]"
+      env:
+        AWS_ACCESS_KEY_ID: "{{ secret('AWS_ACCESS_KEY_ID') }}"
+        AWS_SECRET_ACCESS_KEY: "{{ secret('AWS_SECRET_ACCESS_KEY') }}"
+        DESTINATION__FILESYSTEM__BUCKET_URL: "s3://enygea-bronze/dlt/notion"
+        NOTION_TOKEN: "{{ secret('NOTION_TOKEN') }}"
+      script: |
+        import subprocess
+        subprocess.run(["python", "pipelines/api/notion/tickets.py"], check=True)
+        subprocess.run(["python", "pipelines/api/notion/points.py"], check=True)
+        subprocess.run(["python", "pipelines/api/notion/sprints.py"], check=True)

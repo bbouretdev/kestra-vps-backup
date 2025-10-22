@@ -1,0 +1,19 @@
+id: create_snowflake_external_table
+namespace: enygea.dlt
+
+# inputs:
+#   - 
+
+tasks:
+  - id: create_external_table
+    type: io.kestra.plugin.jdbc.snowflake.Queries
+    url: jdbc:snowflake://fw18093.eu-west-3.aws.snowflakecomputing.com
+    username: "{{ secret('SNOWFLAKE_USERNAME') }}"
+    password: "{{ secret('SNOWFLAKE_PASSWORD') }}"
+    sql: |
+      CREATE OR REPLACE EXTERNAL TABLE poc_db.bronze_data.pokemon_pokemons__test_from_kestra_to_delete
+      WITH LOCATION = @poc_db.bronze_data.pokemon
+      FILE_FORMAT = (FORMAT_NAME = poc_db.bronze_data.json_gz_format)
+      AUTO_REFRESH = TRUE
+      PATTERN = '.*pokemons__moves.*\.jsonl.gz';
+    fetchType: FETCH
