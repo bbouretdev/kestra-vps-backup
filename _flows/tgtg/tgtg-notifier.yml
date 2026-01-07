@@ -5,7 +5,7 @@ tasks:
     type: io.kestra.plugin.scripts.python.Script
     runner: PROCESS
     beforeCommands:
-      - 'pip install tgtg==0.18.3 discord'
+      - 'pip install tgtg==0.18.4 discord'
     script: |
       from tgtg import TgtgClient
       import json
@@ -58,4 +58,4 @@ tasks:
 triggers:
   - id: schedule
     type: io.kestra.plugin.core.trigger.Schedule
-    cron: "* * * * *"
+    cron: "0 */1 * * *"
