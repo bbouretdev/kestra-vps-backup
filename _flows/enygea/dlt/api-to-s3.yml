@@ -19,11 +19,12 @@ tasks:
         - pip install --upgrade pip
         - pip install "dlt[filesystem,s3]"
       env:
-        AWS_ACCESS_KEY_ID: "SCWB3XMCCXHTNQC5KQQH"
-        AWS_SECRET_ACCESS_KEY: "764e1512-586c-4cbd-ad83-8251a0d27b7c"
-        AWS_REGION: "fr-par"
-        ENDPOINT_URL: "https://s3.fr-par.scw.cloud"
+        AWS_ACCESS_KEY_ID: "SCWQCVXV924JWRBFPNZJ"
+        AWS_SECRET_ACCESS_KEY: "770cac14-4c32-4af5-9f1f-46442d3bf171"
+        AWS_DEFAULT_REGION: "fr-par"
         DESTINATION__FILESYSTEM__BUCKET_URL: "s3://sandbox-datalake-bronze/dlt"
+        DESTINATION__FILESYSTEM__ENDPOINT_URL: "https://s3.fr-par.scw.cloud"
+        AWS_S3_FORCE_PATH_STYLE: "true"
       script: |
         import subprocess
         subprocess.run(["python", "pipelines/api/pokeapi/get_all_pokemons.py"], check=True)
