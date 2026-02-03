@@ -1,8 +1,23 @@
 id: s3_parquet__external_table_ddl
 namespace: enygea.dlt
 
+inputs:
+  - id: s3_folder
+    type: STRING
+  - id: trino_catalog
+    type: STRING
+  - id: trino_schema
+    type: STRING
+  - id: trino_table
+    type: STRING
+
 tasks:
-- id: run_pipeline
+# - id: "log"
+#   type: "io.kestra.plugin.core.log.Log"
+#   level: DEBUG
+#   message: "{{ inputs.s3_folder }} : {{ inputs.trino_catalog }} : {{ inputs.trino_schema }} : {{ inputs.trino_table }}"
+  
+- id: generate_ddl
   type: io.kestra.plugin.scripts.python.Script
   taskRunner:
     type: io.kestra.plugin.scripts.runner.docker.Docker
@@ -27,11 +42,14 @@ tasks:
     S3_REGION = "fr-par"
     
     S3_BUCKET = "sandbox-datalake-bronze"
-    S3_PREFIX = "bronze_dlt/notion/workflow_management/sprints"
+    S3_PREFIX = "{{ inputs.s3_folder }}"
+    # S3_PREFIX = "bronze_dlt/notion/workflow_management/sprints"
     
-    TRINO_CATALOG = "hive_json_scw"
-    TRINO_SCHEMA = "notion"
-    TRINO_TABLE = "sprints_bronze"
+    TRINO_CATALOG = "{{ inputs.trino_catalog }}"
+    TRINO_SCHEMA = "{{ inputs.trino_schema }}"
+    TRINO_TABLE = "{{ inputs.trino_table }}"
+    # TRINO_SCHEMA = "notion"
+    # TRINO_TABLE = "sprints_bronze"
     
     # =========================
     # DUCKDB CONNECTION
@@ -104,13 +122,13 @@ tasks:
     )
     
     sql = f"""
-    CREATE TABLE {TRINO_CATALOG}.{TRINO_SCHEMA}.{TRINO_TABLE} (
+    CREATE TABLE IF NOT EXISTS {TRINO_CATALOG}.{TRINO_SCHEMA}.{TRINO_TABLE} (
         {columns_sql}
     )
     WITH (
         format = 'PARQUET',
         external_location = 's3a://{S3_BUCKET}/{S3_PREFIX}'
-    );
+    )
     """
     
     print("====== GENERATED TRINO SQL ======")
@@ -118,3 +136,22 @@ tasks:
 
     with open("query.sql", "w") as f:
           f.write(sql)
+
+- id: create_schema
+  type: io.kestra.plugin.jdbc.trino.Query
+  url: jdbc:trino://trino.davidson-si-nord.fr:443
+  username: "Davidson"
+  password: 
+  sql: |
+    CREATE SCHEMA IF NOT EXISTS {{ inputs.trino_catalog }}.{{ inputs.trino_schema }}
+    WITH (
+        location = 's3a://sandbox-datalake-bronze/bronze_dlt/{{ inputs.trino_schema }}/'
+    )
+
+- id: run_ddl
+  type: io.kestra.plugin.jdbc.trino.Query
+  url: jdbc:trino://trino.davidson-si-nord.fr:443
+  username: "Davidson"
+  password: 
+  sql: |
+    {{ read(outputs.generate_ddl.outputFiles['query.sql']) }}

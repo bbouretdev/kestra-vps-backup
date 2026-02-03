@@ -1,0 +1,34 @@
+id: list_parquet_dirs
+namespace: enygea.dlt
+
+inputs:
+  - id: trino_catalog
+    type: STRING
+    defaults: "hive_json_scw"
+
+tasks:
+  - id: list_parquet_files
+    type: io.kestra.plugin.aws.s3.List
+    accessKeyId: "SCWB3XMCCXHTNQC5KQQH"
+    secretKeyId: "764e1512-586c-4cbd-ad83-8251a0d27b7c"
+    region: "fr-par"
+    bucket: "sandbox-datalake-bronze"
+    endpointOverride: "https://s3.fr-par.scw.cloud"
+    prefix: "bronze_dlt"
+    filter: FILES
+    regexp: ".*.parquet"
+
+  - id: iterate_over_objects
+    type: io.kestra.plugin.core.flow.ForEach
+    concurrencyLimit: 0
+    values: "{{ outputs.list_parquet_files.objects }}"
+    tasks:
+      - id: generate_DDL
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: enygea.dlt
+        flowId: s3_parquet__external_table_ddl
+        inputs:
+          s3_folder: "{{ json(taskrun.value).key | substringBeforeLast('/') }}"
+          trino_catalog: "{{ inputs.trino_catalog }}"
+          trino_schema: "{{ json(taskrun.value).key | substringBeforeLast('/') | substringBeforeLast('/') | substringAfterLast('/') }}"
+          trino_table: "{{ json(taskrun.value).key | substringBeforeLast('/') | substringAfterLast('/') }}"
